@@ -3,7 +3,7 @@ all:	tiny
 CC=gcc
 
 tiny:	main.c tiny.o rio.o mySocket.o tiny.h rio.h mySocket.h
-	$(CC) main.c tiny.o rio.o mySocket.o -o tiny
+	$(CC) main.c tiny.o rio.o mySocket.o -lpthread -o tiny
 
 tiny.o:	tiny.c tiny.h
 	$(CC) -c tiny.c -o tiny.o

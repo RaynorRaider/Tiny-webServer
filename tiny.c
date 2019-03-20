@@ -7,6 +7,7 @@ extern char **environ;
 void doit(int fd)
 {
     int is_static;
+    int body_length;
     struct stat sbuf;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char filename[MAXLINE], cgiargs[MAXLINE];
@@ -16,14 +17,14 @@ void doit(int fd)
     rio_readinitb(&rio, fd);
     rio_readlineb(&rio, buf, MAXLINE);
     sscanf(buf, "%s %s %s", method, uri, version);
-    //仅支持GET方法
-    if(strcasecmp(method, "GET"))
+    //仅支持GET, POST方法
+    if(strcmp(method, "GET") && strcmp(method, "POST"))
     {
         clienterror(fd, method, "501", "Not Implemented", "Tiny does not implement this method");
         return;
     }
 
-    read_requesthdrs(&rio);
+    body_length = read_requesthdrs(&rio);
 
     //从GET请求中解析URI
     is_static = parse_uri(uri, filename, cgiargs);
@@ -49,7 +50,15 @@ void doit(int fd)
             clienterror(fd, filename, "403", "Forbidden", "Tiny couldn't run the CGI program");
             return;
         }
-        serve_dynamic(fd, filename, cgiargs);
+
+        if(strcmp(method, "GET") == 0)
+        {
+            serve_dynamic_get(fd, filename, cgiargs);
+        }
+        else if(strcmp(method, "POST") == 0)
+        {
+            serve_dynamic_post(fd, filename, body_length, &rio);
+        }
     }
 }
 
@@ -75,18 +84,24 @@ void clienterror(int fd, char *cause, char *errnum,
     rio_writen(fd, body, strlen(body));
 }
 
-//读取并忽略报头中的任何信息
-void read_requesthdrs(rio_t *rp)
+//读取报头中的信息,返回Content-length的值
+int read_requesthdrs(rio_t *rp)
 {
     char buf[MAXLINE];
-
+    char *p = NULL;
+    char len[10];
     rio_readlineb(rp, buf, MAXLINE);
     while(strcmp(buf, "\r\n"))
     {
+        if( p = strstr(buf, "Content-Length: "))
+        {
+            sprintf(len, "%s", p+sizeof("Content-Length:"));
+            printf("len is : %s", len);
+        }
         rio_readlineb(rp, buf, MAXLINE);
         printf("%s", buf);
     }
-    return;
+    return atoi(len);
 }
 
 int parse_uri(char *uri, char *filename, char *cgiargs)
@@ -165,7 +180,7 @@ void get_filetype(char *filename, char *filetype)
     }
 }
 
-void serve_dynamic(int fd, char *filename, char *cgiargs)
+void serve_dynamic_get(int fd, char *filename, char *cgiargs)
 {
     char buf[MAXLINE];
     char *emptylist[] = {NULL};
@@ -185,5 +200,41 @@ void serve_dynamic(int fd, char *filename, char *cgiargs)
     wait(NULL);         //父进程等待并回收子进程
 }
 
+void serve_dynamic_post(int fd, char *filename, int bodyLength, rio_t *rp)
+{
+    char buf[MAXLINE];
+    char *emptylist[] = {NULL};
+    char body[MAXLINE];
+    int p[2];
 
+    //返回HTTP响应的开头部分
+    sprintf(buf, "HTTP/1.0 200 OK\r\n");
+    rio_writen(fd, buf, strlen(buf));
+    sprintf(buf, "Server: Tiny Web Server\r\n");
+    rio_writen(fd, buf, strlen(buf));
+
+    //读取http请求body部分进入管道
+    pipe(p);
+    memset(body, 0, MAXLINE);
+    rio_readnb(rp, body, bodyLength);
+    rio_writen(p[1], body, bodyLength);
+
+    dup2(p[0], STDIN_FILENO);        //重定向标准输入流为p[0]
+
+    //设置CONTENT-LENGTH环境变量
+    char len[10];
+    sprintf(len, "%d", bodyLength);
+    setenv("CONTENT-LENGTH", (const char *)&len, 1);
+    
+    close(p[0]);
+    close(p[1]);
+
+    if(fork() == 0)     //子进程
+    {
+        dup2(fd, STDOUT_FILENO);                //重定向输出流到客户端
+        execve(filename, emptylist, environ);   //执行CGI程序
+    }
+    wait(NULL);         //父进程等待并回收子进程
+
+}
 
