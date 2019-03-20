@@ -4,7 +4,7 @@ a tiny web server
 ------
 
 ## 简介
-可用的web服务器，仅支持http GET方法
+可用的web服务器，仅支持http GET， http POST方法
 
 
 
@@ -31,9 +31,10 @@ tiny可以打开指定端口接收http请求，给浏览器提供静态或动态
 * Makefile中存在将SockTest_cli.c 以及 SockTest_ser.c编译为可执行文件的语句，主要用于编写过程中测试mySocket提供的接口是否可用，对于tiny没有影响，如果重新编写mySocket包，则可以修改源文件继续用于测试。
 
 * tiny服务器暂时
- >- 仅支持GET方法
- >- 支持单进程
- >- 对接收到的http报头仅读取不处理
+ >- 仅支持GET, POST方法
+ >- 支持pthread实现的简单多线程
+ >- 对接收到的http报头仅读取需要的body长度字段
  >- 缺少对动态内容执行失败的处理
 
 * 动态内容默认目录为cgi-bin，可以自行创建该目录并放入测试用例
+* 对多线程以及post请求的支持最近刚刚写，还没充分测过。
